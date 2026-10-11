@@ -128,6 +128,62 @@
       text-overflow: ellipsis;
     }
     .chip.selected, .chip:hover { border-color: rgba(214, 242, 92, 0.65); }
+    .publish {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    input[type="text"] {
+      width: 120px;
+      background: #10110f;
+      border: 1px solid var(--line);
+      color: inherit;
+      font: inherit;
+      padding: 10px 12px;
+      outline: none;
+    }
+    input[type="text"]:focus { border-color: rgba(214, 242, 92, 0.7); }
+    label.plain {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    button.go, button.ghost {
+      font: inherit;
+      cursor: pointer;
+    }
+    button.go {
+      background: var(--lime);
+      color: var(--ink-on-lime);
+      border: 0;
+      padding: 10px 14px;
+      font-weight: 750;
+    }
+    button.go:disabled { opacity: 0.55; cursor: wait; }
+    button.ghost {
+      background: transparent;
+      color: var(--ink);
+      border: 1px solid var(--line);
+      padding: 8px 12px;
+    }
+    .service-error { margin: 0; color: var(--bad); }
+    .service-error:empty { display: none; }
+    .service {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      align-items: center;
+      border-top: 1px solid var(--line);
+      padding: 12px 0;
+    }
+    .service .meta { flex: 1; min-width: 200px; display: grid; gap: 2px; }
+    .service .meta span, .service .meta small { color: var(--muted); }
+    .service a { color: var(--lime); word-break: break-all; }
     .terminal-bar {
       display: flex;
       align-items: center;
@@ -198,6 +254,23 @@
       <div id="suggestions" class="suggestions"></div>
     </section>
 
+    <section>
+      <h2>Published services</h2>
+      <div class="composer">
+        <label for="port">Local port</label>
+        <div class="publish">
+          <input id="port" type="text" inputmode="numeric" autocomplete="off" placeholder="3000" spellcheck="false">
+          <button id="publish" class="go" type="button">Publish</button>
+        </div>
+        <label class="plain" for="strip">
+          <input id="strip" type="checkbox" checked>
+          <span>Server listens at /. Requests to /p/PORT/ are forwarded as /. Turn this off when the server was started with base /p/PORT/, like the Vite suggestion.</span>
+        </label>
+        <p id="service-error" class="service-error"></p>
+        <div id="services"></div>
+      </div>
+    </section>
+
     <section class="terminal">
       <div class="terminal-bar">
         <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -214,9 +287,10 @@
       { name: "Where am I", command: "pwd" },
       { name: "System", command: "uname -a" },
       { name: "Create React app", command: "npx --yes create-react-app demo-cra" },
-      { name: "Start React", command: "cd demo-cra && PORT=3000 HOST=0.0.0.0 BROWSER=none npm start" },
-      { name: "Create Vite app", command: "npx --yes create-vite@latest demo-vite --template react" },
-      { name: "Start Vite", command: "cd demo-vite && npm install && npm run dev -- --host 0.0.0.0 --port 5173" },
+      { name: "Start React", command: "cd demo-cra && PORT=3000 HOST=127.0.0.1 BROWSER=none npm start" },
+      { name: "Create Vite app", command: "npx --yes create-vite@latest demo-vite --no-interactive --overwrite --template react" },
+      { name: "Start Vite", command: "cd demo-vite && npm install --include=dev && npm run dev -- --host 127.0.0.1 --port 5173 --strictPort --base /p/5173/" },
+      { name: "Hello server on 8080", command: "node -e \"require('http').createServer((q,s)=>{s.setHeader('content-type','text/html');s.end('<h1>hello from 8080</h1><a href=\\\"/next\\\">next</a>')}).listen(8080,'127.0.0.1')\"" },
     ];
 
     const commandInput = document.querySelector("#command");
@@ -320,6 +394,124 @@
         runCommand();
       }
     });
+
+    const portInput = document.querySelector("#port");
+    const publishButton = document.querySelector("#publish");
+    const stripInput = document.querySelector("#strip");
+    const serviceError = document.querySelector("#service-error");
+    const serviceList = document.querySelector("#services");
+    let servicesStamp = "";
+
+    function serviceNote(route) {
+      return route.strip ? "listening at /" : "listening at /p/" + route.port + "/";
+    }
+
+    function renderServices(data) {
+      serviceList.replaceChildren();
+      const published = new Set(data.routes.map((route) => route.port));
+      if (!data.routes.length && !data.listeners.length) {
+        const empty = document.createElement("p");
+        empty.className = "hint";
+        empty.textContent = "Start a server on 127.0.0.1, then publish its port. It shows up here as a link on this same URL.";
+        serviceList.appendChild(empty);
+        return;
+      }
+      for (const route of data.routes) {
+        const row = document.createElement("div");
+        row.className = "service";
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        const link = document.createElement("a");
+        link.href = route.path;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = location.host + route.path;
+        const detail = document.createElement("small");
+        detail.textContent = (route.online ? "Up" : "Not up yet") + " · " + serviceNote(route);
+        meta.append(link, detail);
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "ghost";
+        remove.textContent = "Remove";
+        remove.addEventListener("click", () => removeRoute(route.port));
+        row.append(meta, remove);
+        serviceList.appendChild(row);
+      }
+      for (const listener of data.listeners) {
+        if (published.has(listener.port)) continue;
+        const row = document.createElement("div");
+        row.className = "service";
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        const title = document.createElement("strong");
+        title.textContent = "Port " + listener.port + " is open";
+        const detail = document.createElement("small");
+        detail.textContent = listener.address + " · from a command you ran";
+        meta.append(title, detail);
+        const open = document.createElement("button");
+        open.type = "button";
+        open.className = "go";
+        open.textContent = "Publish";
+        open.addEventListener("click", () => publishPort(listener.port, stripInput.checked));
+        row.append(meta, open);
+        serviceList.appendChild(row);
+      }
+    }
+
+    async function refreshServices() {
+      try {
+        const data = await api("/api/services");
+        const stamp = JSON.stringify(data);
+        if (stamp !== servicesStamp) {
+          servicesStamp = stamp;
+          renderServices(data);
+        }
+        serviceError.textContent = "";
+      } catch (err) {
+        serviceError.textContent = err.message;
+      }
+    }
+
+    async function publishPort(port, strip) {
+      publishButton.disabled = true;
+      serviceError.textContent = "";
+      try {
+        await api("/api/routes", {
+          method: "POST",
+          body: JSON.stringify({ port: Number(port), strip }),
+        });
+        servicesStamp = "";
+        await refreshServices();
+      } catch (err) {
+        serviceError.textContent = err.message;
+      } finally {
+        publishButton.disabled = false;
+      }
+    }
+
+    async function removeRoute(port) {
+      serviceError.textContent = "";
+      try {
+        await api("/api/routes/" + port, { method: "DELETE" });
+        servicesStamp = "";
+        await refreshServices();
+      } catch (err) {
+        serviceError.textContent = err.message;
+      }
+    }
+
+    publishButton.addEventListener("click", () => {
+      const port = Number(portInput.value.trim());
+      publishPort(port, stripInput.checked);
+    });
+    portInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        publishPort(Number(portInput.value.trim()), stripInput.checked);
+      }
+    });
+    refreshServices();
+    setInterval(refreshServices, 2000);
   </script>
 </body>
 </html>
