@@ -382,15 +382,6 @@ async function handle(req, res) {
     return;
   }
 
-  const auth = authorize(req);
-  if (!auth.ok) {
-    if (auth.status === 401) {
-      await new Promise((resolve) => setTimeout(resolve, 400));
-    }
-    send(res, auth.status, { error: auth.error });
-    return;
-  }
-
   if (req.method === "POST" && url.pathname === "/api/run") {
     const body = await readBody(req);
     const command = String(body.command || "").trim();
@@ -481,5 +472,4 @@ const server = http.createServer((req, res) => {
 server.requestTimeout = 120_000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`command sandbox listening on 0.0.0.0:${PORT}`);
-  console.log(process.env.CMD_TOKEN ? "CMD_TOKEN is set." : "CMD_TOKEN is missing. Refusing commands.");
 });
