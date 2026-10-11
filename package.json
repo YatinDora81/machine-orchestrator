@@ -1,0 +1,12 @@
+{
+  "name": "render-cmd-sandbox",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser page that runs shell commands inside a Render web service and checks which ports are reachable.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
+}

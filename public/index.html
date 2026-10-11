@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Command sandbox</title>
+  <style>
+    :root {
+      --bg: #141311;
+      --panel: #1e1c18;
+      --panel-2: #26231d;
+      --line: #3c362c;
+      --text: #f4f0e6;
+      --muted: #a89c8a;
+      --amber: #f0a202;
+      --green: #8fce6a;
+      --red: #e07a5f;
+      --blue: #8eb4d6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    header, main { width: min(1080px, calc(100% - 32px)); margin: 0 auto; }
+    header { padding: 28px 0 8px; }
+    h1 { font-size: 22px; font-weight: 650; margin: 0 0 8px; letter-spacing: 0.02em; }
+    h2 { font-size: 13px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; margin: 0 0 12px; color: var(--amber); }
+    p { margin: 0; color: var(--muted); }
+    .banner {
+      margin-top: 16px;
+      padding: 10px 12px;
+      border: 1px solid var(--red);
+      color: var(--red);
+      display: none;
+    }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .pill {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: 4px 8px;
+      color: var(--blue);
+    }
+    section {
+      margin: 18px 0;
+      padding: 16px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+    }
+    label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+    input, textarea, button { font: inherit; color: var(--text); }
+    input, textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--line);
+      padding: 10px;
+    }
+    textarea { min-height: 110px; resize: vertical; }
+    button {
+      background: var(--amber);
+      color: #1a1404;
+      border: 0;
+      padding: 9px 12px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); font-weight: 500; }
+    button.danger { background: transparent; color: var(--red); border: 1px solid var(--red); }
+    button:disabled { opacity: 0.5; cursor: wait; }
+    .row { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+    .row > * { flex: 1; }
+    .row button, .checks { flex: 0 0 auto; }
+    .checks { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; color: var(--muted); }
+    .checks input { width: auto; }
+    .examples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #100f0d;
+      border: 1px solid var(--line);
+      padding: 12px;
+      min-height: 120px;
+      max-height: 420px;
+      overflow: auto;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-size: 12px; font-weight: 500; }
+    .status-running { color: var(--amber); }
+    .status-exited { color: var(--green); }
+    .status-error { color: var(--red); }
+    .cmd { color: var(--text); }
+    .diagram { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+    .box { border: 1px solid var(--line); padding: 10px; background: var(--panel-2); min-height: 88px; }
+    .box strong { display: block; margin-bottom: 6px; }
+    .note { margin-top: 10px; }
+    .ok { color: var(--green); }
+    .bad { color: var(--red); }
+    @media (max-width: 800px) {
+      .diagram { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Command sandbox</h1>
+    <p>Paste a shell command. This container runs it. The page you are on is the only public HTTP port Render gives this service.</p>
+    <div id="banner" class="banner"></div>
+    <div id="meta" class="meta"></div>
+  </header>
+  <main>
+    <section>
+      <h2>Access</h2>
+      <div class="row">
+        <div>
+          <label for="token">CMD_TOKEN</label>
+          <input id="token" type="password" autocomplete="off" placeholder="Paste the token from the Render environment tab">
+        </div>
+        <button id="save-token" type="button">Save token</button>
+      </div>
+      <p class="note">Anyone with this token can run commands in the container. Commands are not filtered.</p>
+    </section>
+
+    <section>
+      <h2>Command</h2>
+      <label for="command">Shell</label>
+      <textarea id="command" spellcheck="false" placeholder="node -e &quot;console.log(process.version)&quot;"></textarea>
+      <div class="row" style="margin-top: 10px;">
+        <div>
+          <label for="cwd">Working directory</label>
+          <input id="cwd" value="" placeholder="blank = workspace/">
+        </div>
+        <label class="checks"><input id="background" type="checkbox"> Keep running</label>
+        <button id="run" type="button">Run</button>
+      </div>
+      <div id="examples" class="examples"></div>
+      <p class="note">Ctrl+Enter or Cmd+Enter runs it. Check “Keep running” for servers and installs that should stay up. Output from a live command refreshes below.</p>
+    </section>
+
+    <section>
+      <h2>Output</h2>
+      <pre id="output">Nothing ran yet.</pre>
+    </section>
+
+    <section>
+      <h2>Jobs</h2>
+      <div id="jobs">No commands yet.</div>
+    </section>
+
+    <section>
+      <h2>Is that port on the internet?</h2>
+      <div class="diagram">
+        <div class="box"><strong>Your laptop</strong>Opens the onrender.com URL on port 443.</div>
+        <div class="box"><strong>Render edge</strong>Forwards that traffic to the one port this page already bound.</div>
+        <div class="box"><strong>Other process</strong>A dev server on 3000 or 5173 stays inside the container, or on Render’s private network.</div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="port">Port inside this container</label>
+          <input id="port" value="3999" inputmode="numeric">
+        </div>
+        <button id="probe" type="button">Probe 127.0.0.1</button>
+        <button id="scan" class="ghost" type="button">Scan common ports</button>
+        <button id="open-public" class="ghost" type="button">Open public :port</button>
+      </div>
+      <pre id="probe-out" style="margin-top: 12px;">Probe from inside the container, then open the public link from this browser.</pre>
+      <p class="note">On Render, the public link uses the hostname with that port number. The edge does not route it into the container, so the page should fail to load even when the inside probe says the port is open.</p>
+      <p class="note">On your own laptop, while this app is running locally, extra ports really are reachable. A local success does not mean Render will publish them.</p>
+      <p class="note">Create React App reads PORT from the environment. This service already uses that variable, so start the app with an override: <span class="cmd">PORT=3000 HOST=0.0.0.0 BROWSER=none npm start</span>. Binding 0.0.0.0 still does not make Render publish that port.</p>
+    </section>
+  </main>
+  <script>
+    const EXAMPLES = [
+      {
+        name: "Hello",
+        background: false,
+        command: "node -e \"console.log('hello', process.version)\"",
+      },
+      {
+        name: "Tiny server :3999",
+        background: true,
+        command: "node -e \"require('http').createServer((q,s)=>s.end('alive-on-3999')).listen(3999,'0.0.0.0',()=>console.log('listening 3999'))\"",
+      },
+      {
+        name: "Create React app",
+        background: true,
+        command: "npx --yes create-react-app demo-cra",
+      },
+      {
+        name: "Start React :3000",
+        background: true,
+        cwd: "demo-cra",
+        command: "PORT=3000 HOST=0.0.0.0 BROWSER=none npm start",
+      },
+      {
+        name: "Create Vite React",
+        background: true,
+        command: "npx --yes create-vite@latest demo-vite --template react",
+      },
+      {
+        name: "Start Vite :5173",
+        background: true,
+        cwd: "demo-vite",
+        command: "npm install && npm run dev -- --host 0.0.0.0 --port 5173",
+      },
+    ];
+
+    const tokenInput = document.querySelector("#token");
+    const commandInput = document.querySelector("#command");
+    const cwdInput = document.querySelector("#cwd");
+    const backgroundInput = document.querySelector("#background");
+    const output = document.querySelector("#output");
+    const jobsEl = document.querySelector("#jobs");
+    const probeOut = document.querySelector("#probe-out");
+    const banner = document.querySelector("#banner");
+    let pollTimer = null;
+    let watchedId = null;
+
+    tokenInput.value = sessionStorage.getItem("cmd-token") || "";
+    commandInput.value = sessionStorage.getItem("cmd-last") || EXAMPLES[0].command;
+
+    function token() {
+      return sessionStorage.getItem("cmd-token") || "";
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token(),
+          ...(options.headers || {}),
+        },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      return data;
+    }
+
+    function showOutput(job) {
+      const tail = job.truncated ? "[output truncated]\n" : "";
+      output.textContent = tail + (job.output || "");
+      output.scrollTop = output.scrollHeight;
+    }
+
+    function age(iso) {
+      if (!iso) return "";
+      const seconds = Math.max(0, Math.round((Date.now() - new Date(iso)) / 1000));
+      if (seconds < 60) return seconds + "s";
+      return Math.floor(seconds / 60) + "m " + (seconds % 60) + "s";
+    }
+
+    function renderJobs(list) {
+      if (!list.length) {
+        jobsEl.textContent = "No commands yet.";
+        return;
+      }
+      const table = document.createElement("table");
+      table.innerHTML = "<thead><tr><th>ID</th><th>Status</th><th>Command</th><th></th></tr></thead>";
+      const body = document.createElement("tbody");
+      for (const job of list) {
+        const tr = document.createElement("tr");
+        const statusClass = job.status === "running" ? "status-running" : job.status === "error" ? "status-error" : "status-exited";
+        tr.innerHTML = "<td></td><td></td><td></td><td></td>";
+        tr.children[0].textContent = job.id;
+        tr.children[1].textContent = job.status + (job.exitCode == null ? "" : " " + job.exitCode) + " · " + age(job.startedAt);
+        tr.children[1].className = statusClass;
+        tr.children[2].textContent = job.command;
+        if (job.status === "running") {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "danger";
+          btn.textContent = "Kill";
+          btn.addEventListener("click", () => killJob(job.id));
+          tr.children[3].appendChild(btn);
+        }
+        tr.addEventListener("click", (event) => {
+          if (event.target.tagName === "BUTTON") return;
+          watch(job.id);
+        });
+        body.appendChild(tr);
+      }
+      table.appendChild(body);
+      jobsEl.replaceChildren(table);
+    }
+
+    async function refreshJobs() {
+      const data = await api("/api/jobs");
+      renderJobs(data.jobs);
+    }
+
+    function watch(id) {
+      watchedId = id;
+      clearInterval(pollTimer);
+      const tick = async () => {
+        try {
+          const job = await api("/api/jobs/" + id);
+          showOutput(job);
+          await refreshJobs();
+          if (job.status !== "running") clearInterval(pollTimer);
+        } catch (err) {
+          output.textContent = err.message;
+          clearInterval(pollTimer);
+        }
+      };
+      tick();
+      pollTimer = setInterval(tick, 1000);
+    }
+
+    async function runCommand() {
+      const command = commandInput.value.trim();
+      if (!command) return;
+      sessionStorage.setItem("cmd-last", commandInput.value);
+      const button = document.querySelector("#run");
+      button.disabled = true;
+      output.textContent = "Running…";
+      try {
+        const job = await api("/api/run", {
+          method: "POST",
+          body: JSON.stringify({
+            command,
+            cwd: cwdInput.value.trim(),
+            background: backgroundInput.checked,
+            timeoutMs: 20000,
+          }),
+        });
+        showOutput(job);
+        if (job.status === "running") watch(job.id);
+        else await refreshJobs();
+      } catch (err) {
+        output.textContent = err.message;
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function killJob(id) {
+      try {
+        const data = await api("/api/jobs/" + id + "/kill", { method: "POST", body: "{}" });
+        if (watchedId === id) showOutput(data.job);
+        await refreshJobs();
+      } catch (err) {
+        output.textContent = err.message;
+      }
+    }
+
+    function publicUrl(port) {
+      return location.protocol + "//" + location.hostname + ":" + port + "/";
+    }
+
+    function formatProbe(result) {
+      if (!result.tcp) return "port " + result.port + ": nothing is listening on 127.0.0.1";
+      const who = result.thisService ? " (this command page)" : "";
+      const httpPart = result.http && result.http.status
+        ? "HTTP " + result.http.status + "\n" + (result.http.body || "")
+        : "TCP open, HTTP probe: " + ((result.http && result.http.error) || "no response");
+      return "port " + result.port + " is open inside the container" + who + "\n" + httpPart;
+    }
+
+    async function probe() {
+      probeOut.textContent = "Probing…";
+      try {
+        const result = await api("/api/probe", {
+          method: "POST",
+          body: JSON.stringify({ port: Number(document.querySelector("#port").value) }),
+        });
+        probeOut.textContent = formatProbe(result) + "\n\nPublic URL to try: " + publicUrl(result.port);
+      } catch (err) {
+        probeOut.textContent = err.message;
+      }
+    }
+
+    async function scan() {
+      probeOut.textContent = "Scanning…";
+      try {
+        const meta = await fetch("/api/meta").then((res) => res.json());
+        const ports = [3000, 3999, 4173, 5173, 8080, meta.port];
+        const data = await api("/api/scan", {
+          method: "POST",
+          body: JSON.stringify({ ports }),
+        });
+        probeOut.textContent = data.results.map(formatProbe).join("\n\n");
+      } catch (err) {
+        probeOut.textContent = err.message;
+      }
+    }
+
+    document.querySelector("#save-token").addEventListener("click", () => {
+      sessionStorage.setItem("cmd-token", tokenInput.value.trim());
+      banner.style.display = "none";
+      refreshJobs().catch((err) => {
+        banner.style.display = "block";
+        banner.textContent = err.message;
+      });
+    });
+
+    document.querySelector("#run").addEventListener("click", runCommand);
+    document.querySelector("#probe").addEventListener("click", probe);
+    document.querySelector("#scan").addEventListener("click", scan);
+    document.querySelector("#open-public").addEventListener("click", () => {
+      const port = Number(document.querySelector("#port").value);
+      window.open(publicUrl(port), "_blank", "noopener");
+    });
+    commandInput.addEventListener("keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault();
+        runCommand();
+      }
+    });
+
+    const examples = document.querySelector("#examples");
+    for (const example of EXAMPLES) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ghost";
+      button.textContent = example.name;
+      button.addEventListener("click", () => {
+        commandInput.value = example.command;
+        backgroundInput.checked = example.background;
+        cwdInput.value = example.cwd || "";
+      });
+      examples.appendChild(button);
+    }
+
+    fetch("/api/meta").then((res) => res.json()).then((meta) => {
+      const box = document.querySelector("#meta");
+      const bits = [
+        ["port", meta.port],
+        ["node", meta.node],
+        ["host", meta.hostname],
+        ["token", meta.tokenConfigured ? "set" : "missing"],
+      ];
+      for (const [name, value] of bits) {
+        const span = document.createElement("span");
+        span.className = "pill";
+        span.textContent = name + " " + value;
+        box.appendChild(span);
+      }
+      if (!meta.tokenConfigured) {
+        banner.style.display = "block";
+        banner.textContent = "CMD_TOKEN is not set on the server. Add it in the Render environment tab, then redeploy.";
+      }
+    });
+
+    if (token()) {
+      refreshJobs().catch((err) => {
+        banner.style.display = "block";
+        banner.textContent = err.message;
+      });
+    }
+  </script>
+</body>
+</html>
