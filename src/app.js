@@ -29,4 +29,5 @@ function createApp() {
   return app;
 }
 
-module.exports = { createApp };
+// Vercel loads this file as the Express entry point and needs the app as the default export.
+module.exports = createApp();
