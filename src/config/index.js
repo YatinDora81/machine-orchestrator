@@ -2,7 +2,10 @@ const fs = require("fs");
 const path = require("path");
 
 const rootDir = path.join(__dirname, "../..");
-const workspace = path.join(process.cwd(), "workspace");
+// Vercel functions can only write to /tmp.
+const workspace = process.env.VERCEL
+  ? path.join("/tmp", "workspace")
+  : path.join(process.cwd(), "workspace");
 
 fs.mkdirSync(workspace, { recursive: true });
 

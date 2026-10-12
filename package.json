@@ -1,5 +1,5 @@
 {
-  "name": "render-cmd-sandbox",
+  "name": "machine-orchestrator",
   "version": "1.0.0",
   "private": true,
   "description": "Browser page that runs shell commands inside a Render web service and publishes their ports on that service URL.",
